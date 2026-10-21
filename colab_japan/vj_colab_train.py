@@ -391,11 +391,13 @@ def run_job(job: dict, job_dir: Path, output_dir: Path, drive_root: Path | None 
         say(f"↻ Tiếp tục từ checkpoint bước {resumed} đã lưu trên Google Drive.")
     else:
         say("↻ Dùng lại dữ liệu đã tiền xử lý trên Google Drive.")
-    export_dir = source / "model_assets" / payload["model_name"]
-    shutil.rmtree(export_dir, ignore_errors=True)
+    # Exports of an earlier attempt of this run must not be mistaken for this one's.
+    for stale in run_export_dirs(source, payload["model_name"]):
+        shutil.rmtree(stale, ignore_errors=True)
     log = work / "train_log.txt"
-    started = time.time()
-    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    (work / "run_started.json").write_text(json.dumps({
+        "started": time.time(), "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "resumed": resumed}), encoding="utf-8")
     mirror = DriveMirror(drive, work / "models", identity) if drive else None
     if mirror:
         mirror.start()
@@ -405,6 +407,60 @@ def run_job(job: dict, job_dir: Path, output_dir: Path, drive_root: Path | None 
     finally:
         if mirror:
             mirror.stop()
+    return package_trained(job, output_dir, drive_root, python=python, source=source, base=base)
+
+
+def run_export_dirs(source: Path, model_name: str) -> list[Path]:
+    """Upstream inference export folders whose config names this run.
+
+    SBV2 2.5.0 writes exports to ``<assets_root>/<model_name from config.yml>``
+    (``model_assets/model_name`` by default), not to a folder named after the
+    run; the run identity is the ``model_name`` inside the exported
+    ``config.json``.  The app's local trainer matches exports the same way.
+    """
+    found = []
+    for directory in sorted((source / "model_assets").glob("*")):
+        try:
+            if (directory.is_dir() and json.loads((directory / "config.json").read_text(encoding="utf-8"))
+                    .get("model_name") == model_name):
+                found.append(directory)
+        except (OSError, ValueError):
+            continue
+    return found
+
+
+def package_trained(job: dict, output_dir: Path, drive_root: Path | None = None, *, python: Path | None = None,
+                    source: Path | None = None, base: dict | None = None) -> Path:
+    """Check the finished training of ``job`` and write its result zip.
+
+    Called by :func:`run_job`; can also be called on its own in the same Colab
+    session when training finished but packaging did not.
+    """
+    from vj_colab_runtime import SBV2_ROOT, venv_python
+
+    payload = job["payload"]
+    pins = load_pins()
+    python = python or venv_python("train")
+    source = source or SBV2_ROOT
+    if base is None:  # the pinned base files, checked again
+        base = {}
+        for asset in pins["train"]["assets"]:
+            if asset["id"].startswith("jp_extra_base_"):
+                if sha256_file(source / asset["source_relative_path"]) != asset["sha256"]:
+                    raise PackageError(f"Model gốc {asset['id']} không đúng mã kiểm tra.")
+                base[asset["id"]] = asset["sha256"]
+    work = WORK_ROOT / job["package_id"]
+    drive = Path(drive_root) / "train" / job["package_id"] if drive_root else None
+    log = work / "train_log.txt"
+    try:
+        run = json.loads((work / "run_started.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        run = {"started": time.time(), "started_at": "unknown", "resumed": None}
+    resumed, started, started_at = run.get("resumed"), float(run["started"]), run["started_at"]
+    exports = run_export_dirs(source, payload["model_name"])
+    if len(exports) != 1:
+        raise PackageError(f"Tìm thấy {len(exports)} thư mục model xuất cho lượt huấn luyện này (cần đúng 1).")
+    export_dir = exports[0]
     facts = collect_facts(python, work, export_dir, source)
     if facts["nonfinite"]:
         raise PackageError(f"Loss có giá trị NaN/Inf ({len(facts['nonfinite'])} lần): huấn luyện hỏng, không xuất model.")
@@ -438,4 +494,4 @@ def run_job(job: dict, job_dir: Path, output_dir: Path, drive_root: Path | None 
     return result
 
 
-__all__ = ["build_workspace", "prep_identity", "restore", "run_job", "save_prep"]
+__all__ = ["build_workspace", "package_trained", "prep_identity", "restore", "run_export_dirs", "run_job", "save_prep"]

@@ -8,7 +8,7 @@ Mã nguồn app không nằm ở đây.
 | Thư mục / tag | Là gì |
 |---|---|
 | [`colab_japan/`](colab_japan/) | Notebook Google Colab để huấn luyện (clone) giọng trên GPU miễn phí, dành cho máy yếu. Xem [colab_japan/README.md](colab_japan/README.md) |
-| tag `vj-colab-v1`, `vj-colab-v2`, … (mới nhất: `vj-colab-v5`) | Phiên bản notebook. Tag đã phát hành không bao giờ dời; notebook thay đổi thì ra tag mới |
+| tag `vj-colab-v1`, `vj-colab-v2`, … (mới nhất: `vj-colab-v6`) | Phiên bản notebook. Tag đã phát hành không bao giờ dời; notebook thay đổi thì ra tag mới |
 
 Mở notebook bằng nút **"Mở trang Colab"** trong app, để luôn đúng phiên bản app cần.
 
