@@ -21,7 +21,7 @@ import time
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from vj_colab_common import (PackageError, gpu_name, load_pins, result_name, say,  # noqa: E402
+from vj_colab_common import (PackageError, child_env, gpu_name, load_pins, result_name, say,  # noqa: E402
                              write_result)
 
 # Library identities the app's adapter records as provenance.
@@ -39,9 +39,8 @@ def run_job(job: dict, job_dir: Path, output_dir: Path) -> Path:
     out = job_dir.parent / "asr_out"
     out.mkdir(parents=True, exist_ok=True)
     started = time.time()
-    env = {**os.environ, "HF_HOME": str(HF_CACHE), "HF_HUB_CACHE": str(HF_CACHE),
-           "HF_MODULES_CACHE": str(HF_CACHE / "modules"), "PYTHONIOENCODING": "utf-8",
-           "HF_HUB_DISABLE_TELEMETRY": "1"}
+    env = child_env(HF_HOME=str(HF_CACHE), HF_HUB_CACHE=str(HF_CACHE), HF_MODULES_CACHE=str(HF_CACHE / "modules"),
+                    PYTHONIOENCODING="utf-8", HF_HUB_DISABLE_TELEMETRY="1")
     say("Chạy Kotoba Whisper (thô → stable-ts → dấu câu)…")
     completed = subprocess.run([str(python), str(Path(__file__).resolve()), "--worker", str(job_dir / "job.json"),
                                 str(snapshot), str(out)], env=env, text=True, capture_output=True)

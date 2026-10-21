@@ -26,10 +26,10 @@ RESULT_SCHEMA = "kuroys.voicejapan.colab.result"
 SCHEMA_VERSION = 1
 KINDS = ("asr", "train")
 # The tag this copy of the notebook scripts is published under.
-NOTEBOOK_TAG = "vj-colab-v4"
+NOTEBOOK_TAG = "vj-colab-v5"
 # Packages made for these notebook versions have the same format and pins
 # check, so a newer notebook still runs them.
-ACCEPTED_JOB_TAGS = ("vj-colab-v1", "vj-colab-v2", "vj-colab-v3", "vj-colab-v4")
+ACCEPTED_JOB_TAGS = ("vj-colab-v1", "vj-colab-v2", "vj-colab-v3", "vj-colab-v4", "vj-colab-v5")
 
 HERE = Path(__file__).resolve().parent
 _PACKAGE_ID = re.compile(r"[0-9a-f]{32}")
@@ -39,6 +39,20 @@ _MAX_TOTAL_BYTES = 4 * 1024 ** 3
 
 class PackageError(RuntimeError):
     """The uploaded package cannot be used; the message is for the user."""
+
+
+# Set by the Colab notebook kernel for its own Python; the pinned venvs must
+# not inherit them (MPLBACKEND names an inline backend the venvs do not have,
+# PYTHONPATH would mix Colab's packages into the venv).
+_KERNEL_ONLY_VARIABLES = ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "MPLBACKEND")
+
+
+def child_env(**overrides: str) -> dict:
+    """Environment for a process run with a pinned venv's Python."""
+    env = {key: value for key, value in os.environ.items() if key not in _KERNEL_ONLY_VARIABLES}
+    env["MPLBACKEND"] = "Agg"  # headless: SBV2/pyannote import matplotlib, nothing is shown
+    env.update(overrides)
+    return env
 
 
 def say(message: str) -> None:

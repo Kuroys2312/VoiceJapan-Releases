@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import sys
 
-from vj_colab_common import PackageError, canonical_sha256, load_pins, pins_sha256, say, sha256_file
+from vj_colab_common import PackageError, canonical_sha256, child_env, load_pins, pins_sha256, say, sha256_file
 
 UV_VERSION = "0.4.30"
 # Resolution overrides that apply on Linux only.  The pins come from the
@@ -177,7 +177,7 @@ def provision_training_assets(python: Path, pins: dict | None = None) -> dict:
     HF_CACHE.mkdir(parents=True, exist_ok=True)
     say("Tải model gốc JP-Extra, BERT, WavLM, WeSpeaker (kiểm SHA-256)…")
     paths = json.loads(run([str(python), "-c", _PROVISION, json.dumps(assets), str(SBV2_ROOT), str(HF_CACHE)],
-                           env={**os.environ, "HF_HUB_DISABLE_TELEMETRY": "1"}).stdout.strip().splitlines()[-1])
+                           env=child_env(HF_HUB_DISABLE_TELEMETRY="1")).stdout.strip().splitlines()[-1])
     base = {}
     for asset in assets:
         actual = sha256_file(Path(paths[asset["id"]]))
@@ -210,7 +210,7 @@ def provision_kotoba(python: Path, pins: dict | None = None) -> Path:
     say("Tải Kotoba Whisper v2.1 (kiểm SHA-256 từng file)…")
     snapshot = Path(run([str(python), "-c", _KOTOBA, json.dumps(sorted(kotoba["files"])), kotoba["model_id"],
                          kotoba["revision"], str(HF_CACHE)],
-                        env={**os.environ, "HF_HUB_DISABLE_TELEMETRY": "1"}).stdout.strip().splitlines()[-1])
+                        env=child_env(HF_HUB_DISABLE_TELEMETRY="1")).stdout.strip().splitlines()[-1])
     for relative, digest in kotoba["files"].items():
         path = snapshot / relative
         if not path.is_file() or sha256_file(path) != digest:

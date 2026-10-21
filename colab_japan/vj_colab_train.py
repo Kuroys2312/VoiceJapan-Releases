@@ -26,7 +26,7 @@ import time
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from vj_colab_common import (PackageError, canonical_sha256, gpu_name, load_pins, result_name,  # noqa: E402
+from vj_colab_common import (PackageError, canonical_sha256, child_env, gpu_name, load_pins, result_name,  # noqa: E402
                              say, sha256_file, write_result)
 
 WORK_ROOT = Path(os.environ.get("VJ_WORK_ROOT", "/content/vj_work"))
@@ -38,9 +38,9 @@ _GROUP = ("G", "D", "WD")
 
 def _env(hf_cache: Path) -> dict:
     # Same controls as the app's local trainer (offline, pinned caches).
-    return {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1",
-            "HF_HOME": str(hf_cache), "HUGGINGFACE_HUB_CACHE": str(hf_cache), "PYANNOTE_CACHE": str(hf_cache),
-            "PYTHONIOENCODING": "utf-8", "USE_LIBUV": "0"}
+    return child_env(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_DATASETS_OFFLINE="1", HF_HOME=str(hf_cache),
+                     HUGGINGFACE_HUB_CACHE=str(hf_cache), PYANNOTE_CACHE=str(hf_cache), PYTHONIOENCODING="utf-8",
+                     USE_LIBUV="0")
 
 
 def prep_identity(job: dict, job_dir: Path) -> str:
@@ -362,7 +362,8 @@ print(json.dumps({"export": str(export), "step": step, "losses": losses, "nonfin
 def collect_facts(python: Path, work: Path, export_dir: Path, source: Path) -> dict:
     completed = subprocess.run([str(python), "-c", _FACTS, str(work), str(export_dir),
                                 str(source / "pretrained_jp_extra" / "G_0.safetensors")],
-                               cwd=source, text=True, capture_output=True, encoding="utf-8", errors="replace")
+                               cwd=source, env=child_env(), text=True, capture_output=True, encoding="utf-8",
+                               errors="replace")
     if completed.returncode:
         raise PackageError("Không kiểm được model sau huấn luyện:\n" + completed.stderr[-3000:])
     return json.loads(completed.stdout.strip().splitlines()[-1])
