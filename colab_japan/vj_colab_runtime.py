@@ -27,6 +27,11 @@ UV_VERSION = "0.4.30"
 # declares triton<3 (later whisper releases dropped that bound).  Whisper only
 # uses triton for its optional CUDA timing kernels.  No pinned package changes.
 LINUX_OVERRIDES = {"asr": ("triton==3.1.0",)}
+# Build-time only: the pinned sdists (openai-whisper 20231117, stable-ts,
+# antlr4, docopt) are built in an isolated environment that would otherwise
+# take the newest setuptools, which no longer ships pkg_resources (whisper's
+# setup.py imports it).  This never changes an installed package.
+BUILD_CONSTRAINTS = ("setuptools<81",)
 ENV_ROOT = Path(os.environ.get("VJ_ENV_ROOT", "/content/vj_env"))
 SBV2_ROOT = Path(os.environ.get("VJ_SBV2_ROOT", "/content/vj_sbv2"))
 HF_CACHE = Path(os.environ.get("VJ_HF_CACHE", "/content/vj_hf"))
@@ -88,6 +93,9 @@ def build_venv(kind: str, pins: dict | None = None) -> Path:
                "-r", str(requirements)]
     for url in spec["venv"]["index_urls"]:
         command[5:5] = ["--extra-index-url", url]
+    constraints = ENV_ROOT / "build_constraints.txt"
+    constraints.write_text("\n".join(BUILD_CONSTRAINTS) + "\n", encoding="utf-8")
+    command += ["--build-constraint", str(constraints)]
     if LINUX_OVERRIDES.get(kind) and sys.platform.startswith("linux"):
         overrides = ENV_ROOT / f"{kind}_overrides.txt"
         overrides.write_text("\n".join(LINUX_OVERRIDES[kind]) + "\n", encoding="utf-8")

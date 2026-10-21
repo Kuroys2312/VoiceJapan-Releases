@@ -26,7 +26,10 @@ RESULT_SCHEMA = "kuroys.voicejapan.colab.result"
 SCHEMA_VERSION = 1
 KINDS = ("asr", "train")
 # The tag this copy of the notebook scripts is published under.
-NOTEBOOK_TAG = "vj-colab-v1"
+NOTEBOOK_TAG = "vj-colab-v2"
+# Packages made for these notebook versions have the same format and pins
+# check, so a newer notebook still runs them.
+ACCEPTED_JOB_TAGS = ("vj-colab-v1", "vj-colab-v2")
 
 HERE = Path(__file__).resolve().parent
 _PACKAGE_ID = re.compile(r"[0-9a-f]{32}")
@@ -88,7 +91,7 @@ def open_job(zip_path: Path, work_root: Path) -> tuple[dict, Path]:
                 raise PackageError("Đây không phải gói Voice Japan Colab (thiếu job.json đúng định dạng).")
             if job.get("schema_version") != SCHEMA_VERSION:
                 raise PackageError("Gói tạo từ phiên bản app khác: hãy mở notebook theo nút trong app.")
-            if job.get("colab_tag") != NOTEBOOK_TAG:
+            if job.get("colab_tag") not in ACCEPTED_JOB_TAGS:
                 raise PackageError(f"Gói dành cho notebook {job.get('colab_tag')!r}, đây là {NOTEBOOK_TAG!r}: "
                                    "hãy mở notebook bằng nút \"Mở trang Colab\" trong app.")
             if job.get("kind") not in KINDS or not _PACKAGE_ID.fullmatch(str(job.get("package_id"))):
