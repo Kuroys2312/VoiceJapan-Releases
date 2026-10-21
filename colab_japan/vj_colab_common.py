@@ -26,10 +26,10 @@ RESULT_SCHEMA = "kuroys.voicejapan.colab.result"
 SCHEMA_VERSION = 1
 KINDS = ("asr", "train")
 # The tag this copy of the notebook scripts is published under.
-NOTEBOOK_TAG = "vj-colab-v3"
+NOTEBOOK_TAG = "vj-colab-v4"
 # Packages made for these notebook versions have the same format and pins
 # check, so a newer notebook still runs them.
-ACCEPTED_JOB_TAGS = ("vj-colab-v1", "vj-colab-v2", "vj-colab-v3")
+ACCEPTED_JOB_TAGS = ("vj-colab-v1", "vj-colab-v2", "vj-colab-v3", "vj-colab-v4")
 
 HERE = Path(__file__).resolve().parent
 _PACKAGE_ID = re.compile(r"[0-9a-f]{32}")

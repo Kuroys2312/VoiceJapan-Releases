@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import sys
 
-from vj_colab_common import PackageError, load_pins, pins_sha256, say, sha256_file
+from vj_colab_common import PackageError, canonical_sha256, load_pins, pins_sha256, say, sha256_file
 
 UV_VERSION = "0.4.30"
 # Resolution overrides that apply on Linux only.  The pins come from the
@@ -32,6 +32,12 @@ LINUX_OVERRIDES = {"asr": ("triton==3.1.0",)}
 # take the newest setuptools, which no longer ships pkg_resources (whisper's
 # setup.py imports it).  This never changes an installed package.
 BUILD_CONSTRAINTS = ("setuptools<81",)
+# Runtime: tensorboard pulls in setuptools without a pin, and the newest one
+# has no pkg_resources, which pyopenjtalk imports.  This is the project's own
+# rule for env/tts (requirements/tts_requirements.txt: setuptools==69.5.1,
+# "MANDATORY < 70 to preserve pkg_resources required by pyopenjtalk"); on
+# Windows the training venv gets an old setuptools from python -m venv.
+RUNTIME_CONSTRAINTS = ("setuptools==69.5.1",)
 ENV_ROOT = Path(os.environ.get("VJ_ENV_ROOT", "/content/vj_env"))
 SBV2_ROOT = Path(os.environ.get("VJ_SBV2_ROOT", "/content/vj_sbv2"))
 HF_CACHE = Path(os.environ.get("VJ_HF_CACHE", "/content/vj_hf"))
@@ -76,7 +82,11 @@ def build_venv(kind: str, pins: dict | None = None) -> Path:
     """Create (once per session) and verify the venv for ``asr`` or ``train``."""
     pins = pins or load_pins()
     spec = pins[kind]
-    expected = pins_sha256(pins, kind)
+    # The marker covers the install recipe too, so a fixed recipe reinstalls
+    # an environment left over from an earlier notebook in the same session.
+    expected = canonical_sha256({"pins": pins_sha256(pins, kind), "build": BUILD_CONSTRAINTS,
+                                 "runtime": RUNTIME_CONSTRAINTS, "linux": LINUX_OVERRIDES.get(kind, ()),
+                                 "bytecode": True})
     python = venv_python(kind)
     marker = ENV_ROOT / kind / ".vj_pins_sha256"
     if python.exists() and marker.is_file() and marker.read_text().strip() == expected:
@@ -95,9 +105,12 @@ def build_venv(kind: str, pins: dict | None = None) -> Path:
         command[5:5] = ["--extra-index-url", url]
     constraints = ENV_ROOT / "build_constraints.txt"
     constraints.write_text("\n".join(BUILD_CONSTRAINTS) + "\n", encoding="utf-8")
+    runtime_constraints = ENV_ROOT / "runtime_constraints.txt"
+    runtime_constraints.write_text("\n".join(RUNTIME_CONSTRAINTS) + "\n", encoding="utf-8")
     # Precompiled .pyc: the first import of torch/transformers in a fresh venv
     # otherwise compiles them, which is slow enough to trip upstream timeouts.
-    command += ["--build-constraint", str(constraints), "--compile-bytecode"]
+    command += ["--build-constraint", str(constraints), "--constraint", str(runtime_constraints),
+                "--compile-bytecode"]
     if LINUX_OVERRIDES.get(kind) and sys.platform.startswith("linux"):
         overrides = ENV_ROOT / f"{kind}_overrides.txt"
         overrides.write_text("\n".join(LINUX_OVERRIDES[kind]) + "\n", encoding="utf-8")
