@@ -87,7 +87,69 @@ def copy_base_models(work: Path, source: Path) -> None:
         shutil.copyfile(source / "pretrained_jp_extra" / f"{prefix}_0.safetensors", work / "models" / f"{prefix}_0.safetensors")
 
 
+PYOPENJTALK_WORKER_PORT = 7861  # SBV2's WORKER_PORT
+WORKER_START_SECONDS = int(os.environ.get("VJ_WORKER_START_SECONDS", "300"))
+
+
+class OpenJTalkWorker:
+    """Run SBV2's pyopenjtalk worker server for the preprocessing steps.
+
+    SBV2 starts this server itself, but discards its output and gives up
+    after 10 seconds, and the server quits 30 seconds after its last client.
+    In a freshly installed Colab venv the first import can take longer than
+    that.  Starting it here, with a log, a longer wait and one idle client
+    kept connected, lets each upstream script attach to a running server
+    (exactly what upstream does when one is already listening).
+    """
+
+    def __init__(self, python: Path, source: Path, env: dict, log: Path,
+                 port: int = PYOPENJTALK_WORKER_PORT) -> None:
+        self.python, self.source, self.env, self.log, self.port = python, source, env, log, port
+        self.process: subprocess.Popen | None = None
+        self.client = None
+
+    def _connect(self):
+        import socket
+        return socket.create_connection((socket.gethostname(), self.port), timeout=5)
+
+    def __enter__(self) -> "OpenJTalkWorker":
+        say("Khởi động bộ phát âm tiếng Nhật (pyopenjtalk)…")
+        with self.log.open("ab") as output:
+            self.process = subprocess.Popen(
+                [str(self.python), "-m", "style_bert_vits2.nlp.japanese.pyopenjtalk_worker", "--port", str(self.port)],
+                cwd=self.source, env=self.env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+        deadline = time.time() + WORKER_START_SECONDS
+        while True:
+            try:
+                self.client = self._connect()
+                break
+            except OSError:
+                pass
+            if self.process.poll() is not None or time.time() > deadline:
+                tail = self.log.read_text(encoding="utf-8", errors="replace")[-3000:] if self.log.is_file() else ""
+                self.__exit__(None, None, None)
+                raise PackageError("Bộ phát âm pyopenjtalk không khởi động được:\n" + (tail or "(không có log)"))
+            time.sleep(1)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        if self.client is not None:
+            self.client.close()
+            self.client = None
+        if self.process is not None and self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+
+
 def preprocess(python: Path, work: Path, source: Path, env: dict) -> None:
+    with OpenJTalkWorker(python, source, env, work / "pyopenjtalk_worker.log"):
+        _preprocess(python, work, source, env)
+
+
+def _preprocess(python: Path, work: Path, source: Path, env: dict) -> None:
     commands = [
         ("Chuẩn hoá chữ", 1, [str(python), "preprocess_text.py", "--transcription-path", str(work / "esd.list"),
                               "--cleaned-path", str(work / "esd.list.cleaned"), "--train-path", str(work / "train.list"),
@@ -337,7 +399,8 @@ def run_job(job: dict, job_dir: Path, output_dir: Path, drive_root: Path | None 
     if mirror:
         mirror.start()
     try:
-        train(python, work, source, env, pins["train"]["entrypoint"], int(payload.get("total_steps") or 0), log)
+        with OpenJTalkWorker(python, source, env, work / "pyopenjtalk_worker.log"):
+            train(python, work, source, env, pins["train"]["entrypoint"], int(payload.get("total_steps") or 0), log)
     finally:
         if mirror:
             mirror.stop()

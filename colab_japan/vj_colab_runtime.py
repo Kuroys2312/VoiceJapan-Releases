@@ -95,7 +95,9 @@ def build_venv(kind: str, pins: dict | None = None) -> Path:
         command[5:5] = ["--extra-index-url", url]
     constraints = ENV_ROOT / "build_constraints.txt"
     constraints.write_text("\n".join(BUILD_CONSTRAINTS) + "\n", encoding="utf-8")
-    command += ["--build-constraint", str(constraints)]
+    # Precompiled .pyc: the first import of torch/transformers in a fresh venv
+    # otherwise compiles them, which is slow enough to trip upstream timeouts.
+    command += ["--build-constraint", str(constraints), "--compile-bytecode"]
     if LINUX_OVERRIDES.get(kind) and sys.platform.startswith("linux"):
         overrides = ENV_ROOT / f"{kind}_overrides.txt"
         overrides.write_text("\n".join(LINUX_OVERRIDES[kind]) + "\n", encoding="utf-8")
